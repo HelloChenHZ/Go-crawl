@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"net"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 const Version = "1.0"
 const BodyLimit = 1024*1024
-const MaxQueueUrls = 4096
+const MaxQueuedUrls = 4096
 const MaxVisitedUrls = 8192
 const UserAgent = "dcrawl/1.0"
 
@@ -32,7 +33,7 @@ var (
 	verbose = flag.Bool("v", false, "verbose (default false)")
 )
 
-type ParseUrl struct {
+type ParsedUrl struct {
 	u string
 	urls [] string
 }
@@ -76,9 +77,9 @@ func get_html(u string)([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Clise()
+	defer resp.Body.Close()
 
-	b,err := ioutil.ReadAll(io.LimitReader(resp.Body, BodyLimit))
+	b,err := ioutil.ReadAll(io.LimitReader(resp.Body, BodyLimit)) // limit response reading to 1MB
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ func find_all_urls(u string, b [] byte)([] string) {
 	ru, _ := regexp.Compile(`^(?:ftp|http|https):\/\/(?:[\w\.\-\+]+:{0,1}[\w\.\-\+]*@)?(?:[a-z0-9\-\.]+)(?::[0-9]+)?(?:\/|\/(?:[\w#!:\.\?\+=&amp;%@!\-\/\(\)]+)|\?(?:[\w#!:\.\?\+=&amp;%@!\-\/\(\)]+))?$`)
 	for _, ua := range urls {
 		if ru.Match(ua[1]) {
-			rurls = appent(rurls, string(ua[1]))
+			rurls = append(rurls, string(ua[1]))
 		}else if len(ua)>0 && len(ua[1])>0 && ua[1][0] == '/' {
 			up, err := url.Parse(u)
 			if err == nil {
@@ -118,7 +119,7 @@ func grab_site_urls(u string) ([] string, error) {
 	return ret, err
 }
 
-func process_urls(in <-chan string, out chan<- ParseUrl) {
+func process_urls(in <-chan string, out chan<- ParsedUrl) {
 	for {
 		var u string = <-in
 		if *verbose {
@@ -130,7 +131,7 @@ func process_urls(in <-chan string, out chan<- ParseUrl) {
 			u = ""
 		}
 
-		out <- ParseUrl{u, urls}
+		out <- ParsedUrl{u, urls}
 	}
 }
 
@@ -140,7 +141,7 @@ func is_blacklisted(u string) (bool) {
 	}
 
 	for _, bl := range blhosts {
-		if string.Contains(u, bl) {
+		if strings.Contains(u, bl) {
 			return true	
 		}
 	}
@@ -158,7 +159,7 @@ func create_http_client() *http.Client {
 		DisableKeepAlives: true,
 	}
 
-	client := &htpp.Client {
+	client := &http.Client {
 		Timeout: time.Second * 10,
 		Transport: transport,
 	}
@@ -187,9 +188,9 @@ func init() {
 func main() {
 	banner()
 
-	flag.Prase()
+	flag.Parse()
 
-	if *start_url == "" || * output_File == "" {
+	if *start_url == "" || *output_file == "" {
 		usage()
 		return
 	}
@@ -203,12 +204,12 @@ func main() {
 
 	vurls := make(map[string]bool)
 	chosts := make(map[string]int)
-	dohosts := make(map[stirng]bool)
+	dhosts := make(map[string]bool)
 	ldhosts := make(map[string]int)
 	var qurls [] string
 	var thosts [] string
 
-	fo, err := os.OpenFile(*output_file, os.APPEND, 0666)
+	fo, err := os.OpenFile(*output_file, os.O_APPEND, 0666)
 	if os.IsNotExist(err) {
 		fo, err = os.Create(*output_file)
 	}
@@ -287,7 +288,7 @@ func main() {
 					h := up.Host
 					hd := ""
 					d_ok := true
-					if hd, err := publicsuffix.EffectiveTLDPlusOne(hn); err == nil {
+					if hd, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
 						if n, ok := ldhosts[hd]; ok {
 							if n >= *max_subdomains {
 								d_ok = false
@@ -310,7 +311,7 @@ func main() {
 		}
 
 		if len(qurls) ==0 {
-			fmt.Printf(os.Stderr, "ERROR: ran out of queued urls!\n")
+			fmt.Fprintf(os.Stderr, "ERROR: ran out of queued urls!\n")
 			return
 		}
 
