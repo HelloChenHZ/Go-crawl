@@ -267,27 +267,61 @@ func main() {
 		tu -= 1
 		if purl.u != "" {
 			if du, err := url.Parse(purl.u); err == nil {
-				fmt.Printf("[%d] %s\n", len(dhosts), du.Host)
-				dhosts[du.Host] = true
-				fmt.Fprintf(w, "%s\n", du.Host)
-				w.Flush()
+				if _, d_ok := dhosts[du.Host]; !d_ok {
+					fmt.Printf("[%d] %s\n", len(dhosts), du.Host)
+					dhosts[du.Host] = true
+					fmt.Fprintf(w, "%s\n", du.Host)
+					w.Flush()
+				}
+			}
+
+			urls := purl.urls
+			for _, u := range urls {
+				// strip # out of url if exists
+				u = strings.Split(u, "#")[0]
+
+				up, err := url.Parse(u)
+				if err == nil {
+					h := up.Host
+					hd := ""
+					d_ok := true
+					if hd, err = publicsuffix.EffectiveTLDPlusOne(h); err =nil {
+						if n, ok := ldhosts[hd]; ok {
+							if n >= *max_subdomains {
+								d_ok = false
+							}
+						}
+					}
+
+					_, is_v := vurls[u]
+					if !is_blacklisted(u) && chosts[h] < *max_urls_per_domain && !is_v && d_ok && len(qurls) < MaxQueuedUrls {
+						vurls[u] = true
+						chosts[h] += 1
+						if hd != "" {
+							ldhosts[hd] += 1
+						}
+
+						qurls = append(qurls, u)
+					}
+				}
 			}
 		}
 
-		urls := purl.urls
-		for _, u := range urls {
-			// strip # out of url if exists
-			u = strings.Split(u, "#")[0]
+		if len(qurls) ==0 {
+			fmt.printf(os.Stderr, "ERROR: ran out of queued urls!\n")
+			return
+		}
 
-			up, err := url.Parse(u)
-			if err == nil {
-				h := up.Host
-				hd := ""
-				d_ok := true
-				if hd, err = 
-		
+		//push more urls to channel
+		for tu < *max_threads && len(qurls) > 0 {
+			u := qurls[0]
+			qurls = append(qurls[:0], qurls[1:]...)
+			in_url <- u
+			tu++
+		}
+
+		if len(vurls) >= MaxVisitedUrls {
+			vurls = make(map[string]bool)
+		}
+	}	
 }
-
-
-https://github.com/kgretzky/dcrawl/blob/master/dcrawl.go
-Line 276
