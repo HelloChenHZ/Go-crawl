@@ -48,7 +48,7 @@ func stringInArray(s string, sa [] string) (bool) {
 }
 
 func get_html(u string)([]byte, error) {
-	req, err := http:NewRequest("HEAD", u, nil)
+	req, err := http.NewRequest("HEAD", u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +101,7 @@ func find_all_urls(u string, b [] byte)([] string) {
 				if ru.MatchString(ur) {
 					rurls = append(rurls, ur)
 				}
+			}
 		}
 	}
 
@@ -130,11 +131,12 @@ func process_urls(in <-chan string, out chan<- ParseUrl) {
 		}
 
 		out <- ParseUrl{u, urls}
+	}
 }
 
 func is_blacklisted(u string) (bool) {
 	var blhosts [] string = [] string {
-		"baidu.com"
+		"baidu.com", "xinlang.com", "github.com",
 	}
 
 	for _, bl := range blhosts {
@@ -146,14 +148,14 @@ func is_blacklisted(u string) (bool) {
 	return false
 }
 
-func create_http_client() *http_Client {
+func create_http_client() *http.Client {
 	var transport = &http.Transport {
 		Dial: (&net.Dialer{
 			Timeout: 10 * time.Second,
 		}).Dial,
 
 		TLSHandshakeTimeout: 5 * time.Second,
-		DisableKeepAlives: true
+		DisableKeepAlives: true,
 	}
 
 	client := &htpp.Client {
@@ -236,7 +238,7 @@ func main() {
 
 	su := *start_url
 	in_url := make(chan string)
-	out_urls := make(char ParsedUrl)
+	out_urls := make(chan ParsedUrl)
 
 	for x:=0; x<*max_threads; x++ {
 		go process_urls(in_url, out_urls)
@@ -285,7 +287,7 @@ func main() {
 					h := up.Host
 					hd := ""
 					d_ok := true
-					if hd, err = publicsuffix.EffectiveTLDPlusOne(h); err =nil {
+					if hd, err := publicsuffix.EffectiveTLDPlusOne(hn); err == nil {
 						if n, ok := ldhosts[hd]; ok {
 							if n >= *max_subdomains {
 								d_ok = false
@@ -308,7 +310,7 @@ func main() {
 		}
 
 		if len(qurls) ==0 {
-			fmt.printf(os.Stderr, "ERROR: ran out of queued urls!\n")
+			fmt.Printf(os.Stderr, "ERROR: ran out of queued urls!\n")
 			return
 		}
 
